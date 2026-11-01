@@ -1,0 +1,20 @@
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-es/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">Oyente de NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">Oyente de NikAmore</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-fr/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">Auditeur NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">Auditeur NikAmore</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-he/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">מאזין NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">מאזין NikAmore</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-hi/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">NikAmp श्रोता</string>","replacementContent":"    <string name=\"default_replay_holder\">NikAmore श्रोता</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-id/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">Pendengar NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">Pendengar NikAmore</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-it/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">Ascoltatore NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">Ascoltatore NikAmore</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-ja/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">NikAmpリスナー</string>","replacementContent":"    <string name=\"default_replay_holder\">NikAmoreリスナー</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-pl/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">Słuchacz NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">Słuchacz NikAmore</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-pt/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">Ouvinte NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">Ouvinte NikAmore</string>","allowMultiple":true}]}
+=======
+{"absolutePath":"C:/Users/IT/Documents/NIKAMORE/NikAmore/sharedUi/src/commonMain/composeResources/values-ru/strings.xml","replacementChunks":[{"targetContent":"    <string name=\"default_replay_holder\">Слушатель NikAmp</string>","replacementContent":"    <string name=\"default_replay_holder\">Слушатель NikAmore</string>","allowMultiple":true}]}
+=======
