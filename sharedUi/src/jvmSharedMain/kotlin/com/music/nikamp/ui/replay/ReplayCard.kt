@@ -1,5 +1,6 @@
 package com.music.nikamp.ui.replay
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -145,12 +146,20 @@ fun ReplayCreditCard(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(10.dp))
-                Icon(
-                    painter = painterResource(Res.drawable.ic_logo),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(width = 34.dp, height = 22.dp),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        painter = painterResource(Res.drawable.ic_logo),
+                        contentDescription = "PineApple Music",
+                        modifier = Modifier.size(width = 42.dp, height = 28.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Music",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.W700,
+                        color = Color.White.copy(alpha = 0.9f),
+                    )
+                }
             }
 
             Spacer(Modifier.weight(1f))

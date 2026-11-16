@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -559,14 +560,13 @@ private fun TvTopBar(
             .padding(top = 18.dp, start = 38.dp, end = 38.dp),
     ) {
         // The mark only, as the phone's Home heading shows it.
-        Icon(
+        Image(
             painter = painterResource(R.drawable.ic_logo),
-            contentDescription = "NikAmp",
-            tint = TvGlass.TextPrimary,
+            contentDescription = "PineApple Music",
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .height(21.dp)
-                .aspectRatio(730f / 484f),
+                .aspectRatio(512f / 341f),
         )
         TvAvatarButton(
             imageUrl = if (signedIn) avatarUrl else null,
@@ -666,10 +666,9 @@ fun TvAppMark(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp =
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
+        Image(
             painter = painterResource(R.drawable.ic_logo),
-            contentDescription = "NikAmp",
-            tint = Color.White,
+            contentDescription = "PineApple Music",
             modifier = Modifier.size(size * 0.52f),
         )
     }

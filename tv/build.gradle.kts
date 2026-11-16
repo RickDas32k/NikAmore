@@ -148,11 +148,11 @@ android {
         create("dev") {
             dimension = "env"
             applicationId = "com.dev.nikamp.tv"
-            resValue("string", "app_name", "NikAmore TV")
+            resValue("string", "app_name", "PineApple Music TV")
         }
         create("prod") {
             dimension = "env"
-            resValue("string", "app_name", "NikAmore TV")
+            resValue("string", "app_name", "PineApple Music TV")
         }
     }
 

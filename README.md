@@ -1,4 +1,4 @@
-# NikAmore
+# PineApple Music
 
 An aesthetic and highly functional Android music player client.
 
@@ -77,11 +77,11 @@ The settings menu provides access to:
 
 ## Privacy and Data Handling
 
-NikAmore operates locally and communicates only with necessary APIs for streaming and lyrics. The app supports local caching and does not upload your personal listening history to unauthorized third-party servers. 
+PineApple Music operates locally and communicates only with necessary APIs for streaming and lyrics. The app supports local caching and does not upload your personal listening history to unauthorized third-party servers. 
 
 ## Support the Developer
 
-If you enjoy using NikAmore, consider supporting the development!
+If you enjoy using PineApple Music, consider supporting the development!
 
 - **Developer**: Rick Das
 - **Email**: rdas.vawsum@gmail.com
@@ -92,7 +92,7 @@ If you enjoy using NikAmore, consider supporting the development!
 
 ## Version Information
 
-**NikAmore 1.0.0**
+**PineApple Music 1.0.0**
 
 ## Troubleshooting
 

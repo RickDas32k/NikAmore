@@ -12,6 +12,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import com.music.nikamp.ui.components.longPressMenuClickable
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -168,11 +169,11 @@ fun HomeScreen(
             if (title != null) {
                 item { HomeTitle(title) }
             }
-            if (!signedIn && onSignIn != null) {
-                item {
-                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
-                }
-            }
+//            if (!signedIn && onSignIn != null) {
+//                item {
+//                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
+//                }
+//            }
             when (state) {
                 is UiState.Loading -> {
                     if (recentlyPlayedLoading) {
@@ -499,17 +500,35 @@ fun CompactTrackRow(
 @Composable
 private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
     val style = MaterialTheme.typography.displayLarge
-    val logoHeight = with(LocalDensity.current) { (style.fontSize * LOGO_TO_FONT).toDp() }
-    Column(modifier = modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp)) {
-        Icon(
-            painter = painterResource(Res.drawable.ic_logo),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground,
+    val logoHeight = 36.dp
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+    ) {
+        Row(
             modifier = Modifier
-                .padding(bottom = 14.dp)
-                .height(logoHeight)
-                .aspectRatio(LOGO_ASPECT),
-        )
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = painterResource(Res.drawable.ic_logo),
+                contentDescription = "PineApple Music",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .height(logoHeight)
+                    .aspectRatio(512f / 341f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "Music",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
         Text(
             text = title,
             style = style,
@@ -520,9 +539,6 @@ private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
 
 /** The wordmark's height against the heading's font size. */
 private const val LOGO_TO_FONT = 0.9f
-
-/** ic_logo's viewport, 730 x 484. */
-private const val LOGO_ASPECT = 730f / 484f
 
 /**
  * Shared by the home feed, Explore and Library so headings line up across tabs.

@@ -410,6 +410,7 @@ fun SettingsScreen(
         )
 
         SearchableSettingsGroup(search) {
+            /* Hidden for now: Account & integrations
             val accountTitle = stringResource(R.string.account_integrations)
             // What the row opens is the scrobbling screen, so the services it
             // signs into are worth typing at this field even though none of
@@ -418,11 +419,10 @@ fun SettingsScreen(
                 SettingsRow(
                     icon = Icons.Rounded.Person,
                     title = accountTitle,
-                    subtitle = account?.email?.takeIf { it.isNotBlank() }
-                        ?: stringResource(if (signedIn) R.string.signed_in else R.string.not_signed_in),
                     onClick = onAccountScrobbling,
                 )
             }
+            */
             // Sits with the account rather than with Playback: a party is up to
             // five signed-in people, and being signed in is the whole of what
             // the row needs before it will do anything.
@@ -919,26 +919,6 @@ fun SettingsScreen(
                         checked = canvasOverCellular,
                         onCheckedChange = AppSettings::setCanvasOverCellular,
                     )
-                }
-                val spotifyCanvasTitle = stringResource(R.string.integrate_spotify_canvas)
-                row(spotifyCanvasTitle, "spotify", "canvas", divided = false) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onSpotifyCanvasAuth)
-                            .padding(start = ROW_INSET, end = ROW_INSET, top = 4.dp, bottom = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = spotifyCanvasTitle,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Chevron()
-                    }
                 }
             }
             /* HIDDEN
@@ -1576,7 +1556,7 @@ fun SettingsScreen(
         if (searchQuery.isBlank()) {
         Text(
             text = buildAnnotatedString {
-                append("NikAmore 1.0.0\n")
+                append("PineApple Music (Formerly NikAmore)\n")
                 append("Made with Love ❤️\n")
                 append("YouTube Music Backend\n\n")
                 val linkStyles = TextLinkStyles(

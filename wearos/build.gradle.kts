@@ -54,11 +54,11 @@ android {
         create("dev") {
             dimension = "env"
             applicationId = "com.dev.nikamp"
-            resValue("string", "app_name", "NikAmore Dev")
+            resValue("string", "app_name", "PineApple Music Dev")
         }
         create("prod") {
             dimension = "env"
-            resValue("string", "app_name", "NikAmore")
+            resValue("string", "app_name", "PineApple Music")
         }
     }
 

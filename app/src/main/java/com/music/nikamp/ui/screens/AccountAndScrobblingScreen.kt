@@ -84,7 +84,7 @@ fun AccountAndScrobblingScreen(
 
         // One card: who is signed in, which profile is listening, and the way
         // out, with the explanation of profiles underneath.
-        SettingsGroup(
+        /* SettingsGroup(
             footer = if (signedIn) stringResource(R.string.account_profiles_help) else null,
             topSpacing = 0.dp,
         ) {
@@ -106,7 +106,7 @@ fun AccountAndScrobblingScreen(
                 FullWidthDivider()
                 DestructiveRow(label = stringResource(R.string.sign_out), onClick = onSignOut)
             }
-        }
+        } */
 
         SettingsGroup(
             header = stringResource(R.string.spotify),
