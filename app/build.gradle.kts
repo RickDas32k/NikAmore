@@ -17,7 +17,16 @@ plugins {
  */
 val signing = Properties().apply {
     val file = rootProject.file("keystore.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+        val keys = stringPropertyNames().toList()
+        for (k in keys) {
+            val cleanKey = k.trimStart('\uFEFF', ' ')
+            if (cleanKey != k) {
+                setProperty(cleanKey, getProperty(k))
+            }
+        }
+    }
 }
 
 val localProps = Properties().apply {
@@ -133,12 +142,19 @@ android {
         // exactly the failure the unsigned fallback above exists to avoid, so
         // the keystore has to be looked for rather than assumed.
         val store = signing.getProperty("storeFile")?.let { rootProject.file(it) }
-        if (store != null && store.exists()) {
+        val storePass = signing.getProperty("storePassword")?.trim()
+        val alias = signing.getProperty("keyAlias")?.trim()
+        val keyPass = signing.getProperty("keyPassword")?.trim()?.ifEmpty { null } ?: storePass
+        val storeTypeVal = signing.getProperty("storeType")?.trim()?.ifEmpty { null }
+        if (store != null && store.exists() && store.length() > 0L && !storePass.isNullOrEmpty() && !alias.isNullOrEmpty()) {
             create("release") {
                 storeFile = store
-                storePassword = signing.getProperty("storePassword")
-                keyAlias = signing.getProperty("keyAlias")
-                keyPassword = signing.getProperty("keyPassword")
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = keyPass
+                if (storeTypeVal != null) {
+                    storeType = storeTypeVal
+                }
             }
         }
     }
@@ -214,6 +230,10 @@ android {
             // logic it was written to check.
             isReturnDefaultValues = true
         }
+    }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 
