@@ -92,7 +92,7 @@ If you enjoy using PineApple Music, consider supporting the development!
 
 ## Version Information
 
-**PineApple Music 1.0.0**
+**PineApple Music 1.0.1**
 
 ## Troubleshooting
 
