@@ -169,11 +169,11 @@ fun HomeScreen(
             if (title != null) {
                 item { HomeTitle(title) }
             }
-//            if (!signedIn && onSignIn != null) {
-//                item {
-//                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
-//                }
-//            }
+            if (!signedIn && onSignIn != null) {
+                item {
+                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
+                }
+            }
             when (state) {
                 is UiState.Loading -> {
                     if (recentlyPlayedLoading) {

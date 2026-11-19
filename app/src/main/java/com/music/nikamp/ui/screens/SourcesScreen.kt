@@ -115,9 +115,9 @@ fun SourcesScreen(
      * reason as [onEditSource]: the frosted alert cannot be drawn from inside
      * this subtree.
      */
-    onEditWebDav: () -> Unit,
+    onEditWebDav: () -> Unit = {},
     /** As [onEditWebDav], for the SMB share editor. */
-    onEditSmb: () -> Unit,
+    onEditSmb: () -> Unit = {},
     /** Opens the full-window warning before JioSaavn is opted into. */
     onConfirmJioSaavn: () -> Unit,
     modifier: Modifier = Modifier,
@@ -128,6 +128,7 @@ fun SourcesScreen(
     val cellularQuality by AppSettings.audioQualityCellular.collectAsStateWithLifecycle()
     val metered by AppSettings.meteredConnection.collectAsStateWithLifecycle()
     val upgradeLengthSlackSeconds by AppSettings.upgradeLengthSlackSeconds.collectAsStateWithLifecycle()
+    /* Hidden: WebDAV and SMB settings not needed while sections are hidden
     val webdavUrl by AppSettings.webdavUrl.collectAsStateWithLifecycle()
     val webdavUsername by AppSettings.webdavUsername.collectAsStateWithLifecycle()
     val webdavPassword by AppSettings.webdavPassword.collectAsStateWithLifecycle()
@@ -135,6 +136,7 @@ fun SourcesScreen(
     val smbShare by AppSettings.smbShare.collectAsStateWithLifecycle()
     val smbUsername by AppSettings.smbUsername.collectAsStateWithLifecycle()
     val smbPassword by AppSettings.smbPassword.collectAsStateWithLifecycle()
+    */
 
     /** Last known reachability per source, filled in as the probes come back. */
     val health = remember { mutableStateMapOf<String, SourceHealth>() }
@@ -299,6 +301,7 @@ fun SourcesScreen(
         // holds the listener's own files instead of answering for YouTube's,
         // so it takes no part in the ranking and gets its own group. The
         // editor is raised to the activity like every other alert.
+        /* Hidden from Sources: WebDAV & SMB
         RemoteLibrarySection(
             icon = Icons.Rounded.Cloud,
             title = stringResource(R.string.webdav),
@@ -351,6 +354,7 @@ fun SourcesScreen(
             },
             onDisconnect = { AppSettings.clearSmb() },
         )
+        */
 
         SettingsGroup(
             header = stringResource(R.string.source_matching),

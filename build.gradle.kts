@@ -9,8 +9,8 @@
  * No "v" in the name — the in-app updater reads it as a number; the "v" is the
  * release tag's alone.
  */
-extra["nikampVersionCode"] = 30
-extra["nikampVersionName"] = "1.0.1"
+extra["nikampVersionCode"] = 31
+extra["nikampVersionName"] = "1.0.2"
 
 /*
  * Bump this by hand before cutting each sideloaded test build ("beta2",

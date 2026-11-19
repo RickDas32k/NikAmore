@@ -410,19 +410,19 @@ fun SettingsScreen(
         )
 
         SearchableSettingsGroup(search) {
-            /* Hidden for now: Account & integrations
             val accountTitle = stringResource(R.string.account_integrations)
             // What the row opens is the scrobbling screen, so the services it
             // signs into are worth typing at this field even though none of
             // them is named on the row itself.
-            row(accountTitle, "scrobbling", "last.fm", "listenbrainz") {
+            row(accountTitle, "account", "youtube", "google", "login", "signin", "scrobbling", "last.fm", "listenbrainz") {
                 SettingsRow(
                     icon = Icons.Rounded.Person,
                     title = accountTitle,
+                    subtitle = account?.email?.takeIf { it.isNotBlank() }
+                        ?: stringResource(if (signedIn) R.string.signed_in else R.string.tap_to_sign_in_google),
                     onClick = onAccountScrobbling,
                 )
             }
-            */
             // Sits with the account rather than with Playback: a party is up to
             // five signed-in people, and being signed in is the whole of what
             // the row needs before it will do anything.
