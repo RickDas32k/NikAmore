@@ -35,8 +35,8 @@ class AuthStore(context: Context) {
     var sessions: List<GoogleAccountSession>
         get() {
             val saved = sessionsFromJson(prefs.getString(KEY_SESSIONS, null))
-            if (saved.isNotEmpty()) return saved
-            val legacy = cookie ?: return emptyList()
+            if (saved.isNotEmpty()) return saved.filter { hasApiSid(it.cookie) }
+            val legacy = cookie?.takeIf { hasApiSid(it) } ?: return emptyList()
             val profile = YouTubeProfile(
                 profileId = profileId(channelPageId, channelDataSyncId, channelName ?: "Personal"),
                 name = channelName ?: "Personal",
@@ -96,7 +96,7 @@ class AuthStore(context: Context) {
     }
 
     val isSignedIn: Boolean
-        get() = activeSession?.cookie?.let { hasApiSid(it) } == true
+        get() = activeSession?.let { hasApiSid(it.cookie) } == true
 
     /** The Discord account's bearer token. See DiscordRPC for why a user token. */
     var discordToken: String?

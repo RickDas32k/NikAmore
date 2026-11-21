@@ -72,11 +72,14 @@ internal fun sessionsFromJson(raw: String?): List<GoogleAccountSession> = runCat
         for (index in 0 until root.length()) {
             val item = root.getJSONObject(index)
             val cookie = item.optString("cookie")
-            if (cookie.isNotBlank()) {
+            val email = item.optString("email")
+            val name = item.optString("name")
+            if (cookie.isNotBlank() && AuthStore.hasApiSid(cookie)) {
             val profiles = item.optJSONArray("profiles") ?: JSONArray()
+            val idFallback = if (cookie.isNotBlank()) sessionId(cookie, null) else "account:${email.ifBlank { name }}"
             add(GoogleAccountSession(
-                accountId = item.optString("id", sessionId(cookie, null)), cookie = cookie,
-                name = item.optString("name"), email = item.optString("email"),
+                accountId = item.optString("id").ifBlank { idFallback }, cookie = cookie,
+                name = name, email = email,
                 activeProfileId = item.optString("activeProfileId").ifBlank { null },
                 profiles = buildList {
                     for (p in 0 until profiles.length()) {

@@ -1,6 +1,8 @@
 package com.music.nikamp.auth
 
 import android.annotation.SuppressLint
+import android.os.Build
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -15,6 +17,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.music.nikamp.data.DebugLog as Log
+import java.net.URLEncoder
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -23,10 +27,17 @@ import kotlinx.serialization.json.jsonObject
 
 private const val MUSIC_ORIGIN = "https://music.youtube.com"
 
-private const val LOGIN_URL =
-    "https://accounts.google.com/ServiceLogin" +
-        "?ltmpl=music&service=youtube&prompt=select_account" +
-    "&continue=https%3A%2F%2Fmusic.youtube.com%2F"
+private fun getLoginUrl(loginHint: String? = null): String {
+    val base = "https://accounts.google.com/ServiceLogin" +
+        "?ltmpl=music&service=youtube" +
+        "&continue=https%3A%2F%2Fmusic.youtube.com%2F"
+    return if (!loginHint.isNullOrBlank()) {
+        val encoded = URLEncoder.encode(loginHint.trim(), "UTF-8")
+        "$base&Email=$encoded&login_hint=$encoded"
+    } else {
+        "$base&prompt=select_account"
+    }
+}
 
 private const val TAG = "NikAmp"
 
@@ -59,6 +70,8 @@ fun YtMusicLoginScreen(
     mode: WebSessionMode,
     /** Cookie snapshot to install before opening an existing account's channel picker. */
     initialCookie: String? = null,
+    /** Pre-selected Google/Gmail account chosen from the device account selector. */
+    loginHint: String? = null,
     onCaptured: (CapturedSession) -> Unit,
     modifier: Modifier = Modifier,
     /**
@@ -77,6 +90,7 @@ fun YtMusicLoginScreen(
     val currentOnCaptured by rememberUpdatedState(onCaptured)
     val currentOnUnavailable by rememberUpdatedState(onCaptureUnavailable)
     val currentOnPageReady by rememberUpdatedState(onPageReady)
+    var autoCaptured by remember { mutableStateOf(false) }
 
     LaunchedEffect(captureRequest) {
         if (captureRequest == 0) return@LaunchedEffect
@@ -85,35 +99,66 @@ fun YtMusicLoginScreen(
         else captureFrom(view, currentOnCaptured, currentOnUnavailable)
     }
 
+    // Auto-capture session once logged in and redirected to YouTube Music (SIGN_IN mode)
+    LaunchedEffect(webView, autoCaptured, mode) {
+        if (mode != WebSessionMode.SIGN_IN || autoCaptured) return@LaunchedEffect
+        while (!autoCaptured) {
+            val view = webView
+            if (view != null) {
+                val currentUrl = view.url
+                if (currentUrl != null && currentUrl.startsWith(MUSIC_ORIGIN)) {
+                    captureFrom(
+                        view = view,
+                        onCaptured = { session ->
+                            if (!autoCaptured) {
+                                autoCaptured = true
+                                currentOnCaptured(session)
+                            }
+                        },
+                        onUnavailable = { /* still initializing on page */ },
+                    )
+                }
+            }
+            delay(1000L)
+        }
+    }
+
     AndroidView(
         modifier = modifier.fillMaxSize(),
         factory = { context ->
-            if (mode == WebSessionMode.SIGN_IN) {
-                BrowserSession.clearGoogleCookies()
-            } else initialCookie?.let(BrowserSession::installGoogleCookies)
+            if (mode == WebSessionMode.SWITCH_CHANNEL) {
+                initialCookie?.let(BrowserSession::installGoogleCookies)
+            }
             WebView(context).apply {
-                if (mode == WebSessionMode.SIGN_IN) {
-                    clearCache(true)
-                    clearHistory()
-                    clearFormData()
-                }
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.databaseEnabled = true
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+                }
                 configureWebView(this)
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
-                        // Reaching the Music origin only enables confirmation.
-                        // A multi-channel login can still be waiting for the
-                        // listener to choose an identity on this very page.
-                        // Capturing automatically here is the race that used to
-                        // create a fake "Personal" profile and close too soon.
-                        currentOnPageReady(url?.startsWith(MUSIC_ORIGIN) == true)
+                        val isMusic = url?.startsWith(MUSIC_ORIGIN) == true
+                        currentOnPageReady(isMusic)
+                        if (isMusic && mode == WebSessionMode.SIGN_IN && view != null && !autoCaptured) {
+                            captureFrom(
+                                view = view,
+                                onCaptured = { session ->
+                                    if (!autoCaptured) {
+                                        autoCaptured = true
+                                        currentOnCaptured(session)
+                                    }
+                                },
+                                onUnavailable = { /* will retry in launchedEffect */ },
+                            )
+                        }
                     }
                 }
 
                 webView = this
-                loadUrl(if (mode == WebSessionMode.SIGN_IN) LOGIN_URL else "$MUSIC_ORIGIN/")
+                loadUrl(if (mode == WebSessionMode.SIGN_IN) getLoginUrl(loginHint) else "$MUSIC_ORIGIN/")
             }
         },
     )

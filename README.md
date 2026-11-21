@@ -71,9 +71,9 @@ No special configuration is required for standard usage. If you wish to use Disc
 The settings menu provides access to:
 - **Audio Quality & Playback**: Adjust streaming and download quality.
 - **Appearance**: Toggle themes, language, and other UI aspects.
-- **Integrations**: Discord Rich Presence, Last.fm, and ListenBrainz.
+- **Integrations**: Google Account & YouTube Music Library integration.
 
-*(Note: Certain advanced settings, legacy gradients, and data options are temporarily hidden in this version.)*
+*(Note: WebDAV, SMB, and legacy external scrobblers are removed/hidden in this version for streamlined experience.)*
 
 ## Privacy and Data Handling
 
@@ -92,7 +92,7 @@ If you enjoy using PineApple Music, consider supporting the development!
 
 ## Version Information
 
-**PineApple Music 1.0.2**
+**PineApple Music 1.0.3**
 
 ## Troubleshooting
 

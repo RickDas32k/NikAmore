@@ -5,12 +5,12 @@ import com.music.nikamp.ui.AppUi
 import com.music.nikamp.sharedui.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.DrawableResource
-import androidx.compose.foundation.Image
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import com.music.nikamp.ui.components.longPressMenuClickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import com.music.nikamp.ui.components.ShelfRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,8 +44,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,13 +56,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Storage
 import com.music.nikamp.ui.icons.NikAmpIcons
 import coil3.compose.AsyncImage
@@ -70,6 +75,7 @@ import com.music.nikamp.data.model.ROW_ART_PX
 import com.music.nikamp.data.model.ShelfItem
 import com.music.nikamp.data.model.Song
 import com.music.nikamp.data.model.UiState
+import java.util.Calendar
 import java.util.Locale
 import com.music.nikamp.data.model.artworkAt
 import com.music.nikamp.data.settings.LibraryViewType
@@ -77,7 +83,6 @@ import com.music.nikamp.ui.components.HERO_CARD_RATIO
 import com.music.nikamp.ui.components.MessageState
 import com.music.nikamp.ui.components.PAGE_GUTTER
 import com.music.nikamp.ui.components.RowMoreButton
-import com.music.nikamp.ui.components.PlayingAccent
 import com.music.nikamp.ui.components.PullToRefresh
 import com.music.nikamp.ui.components.SHELF_CARD_WIDTH
 import com.music.nikamp.ui.components.SearchPlayingBars
@@ -91,16 +96,27 @@ import com.music.nikamp.ui.components.trackColumnWidth
 import com.music.nikamp.ui.player.MeshGradientBackground
 import com.music.nikamp.ui.player.MeshPalette
 
-/** How far the Listen now heading and feed sit above the shared top inset. */
+/** PineApple Purple signature brand accent (matching PineApple Music logo). */
+val PineApplePurple = Color(0xFFA855F7)
+
+/** How far the heading and feed sit above the shared top inset. */
 private val HOME_TITLE_LIFT = 28.dp
 
 private const val RECENTS_TITLE = "Recents"
 private const val RECENT_TRACKS_PER_COLUMN = 4
 
+/** Resolves time-based greeting, exactly as on Spotify Home. */
+private fun getSpotifyGreeting(): String {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    return when (hour) {
+        in 5..11 -> "Good morning"
+        in 12..17 -> "Good afternoon"
+        else -> "Good evening"
+    }
+}
+
 private fun List<ShelfItem>.playingItemMatcher(song: Song?): (ShelfItem) -> Boolean {
     song ?: return { false }
-    // The card that was played, when the shelf holds it, and only that one —
-    // see [com.music.nikamp.data.model.playingRowMatcher], which rows use.
     if (any { it.videoId == song.videoId }) return { it.videoId == song.videoId }
     val byName = firstOrNull { it.videoId != null && it.title == song.title && it.subtitle == song.artist }
         ?: return { false }
@@ -120,31 +136,20 @@ fun HomeScreen(
     pullState: PullToRefreshState,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues,
-    /** The page's heading, or null for none — the desktop's pages carry no heading. */
+    /** The page's heading, or null for none. */
     title: String?,
     signedIn: Boolean = true,
     onSignIn: (() -> Unit)? = null,
-    /**
-     * Holding a card rather than tapping it. Every card on the feed answers,
-     * whichever kind it is: the caller reads the item the same way it does for
-     * a tap, so a track card opens the track menu and a card that points at a
-     * collection opens the album / playlist one.
-     */
     onItemLongPress: ((ShelfItem) -> Unit)? = null,
-    // Explore doesn't page — only Home has a continuation worth following.
     onLoadMore: (() -> Unit)? = null,
     loadingMore: Boolean = false,
     recentlyPlayedLoading: Boolean = false,
-    /**
-     * Whether the feed's first shelf gets the big full-bleed cards. The phone
-     * leads with them; on a window as wide as a desktop's they are posters, so
-     * there every shelf is the ordinary row.
-     */
     leadHero: Boolean = true,
     currentSong: Song? = null,
     isPlaying: Boolean = false,
 ) {
     val recentsViewType by AppUi.host.homeRecentsViewType.collectAsStateWithLifecycle()
+    var selectedFilter by remember { mutableStateOf("All") }
 
     PullToRefresh(
         refreshing = refreshing,
@@ -152,69 +157,88 @@ fun HomeScreen(
         state = pullState,
         modifier = modifier,
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            // The heading sits higher than the other tabs' first row: pull the
-            // whole feed up by [HOME_TITLE_LIFT] with it.
-            contentPadding = if (title != null) {
-                PaddingValues(
-                    top = (contentPadding.calculateTopPadding() - HOME_TITLE_LIFT).coerceAtLeast(0.dp),
-                    bottom = contentPadding.calculateBottomPadding(),
-                )
-            } else {
-                contentPadding
-            },
-        ) {
-            if (title != null) {
-                item { HomeTitle(title) }
-            }
-            if (!signedIn && onSignIn != null) {
-                item {
-                    SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
-                }
-            }
-            when (state) {
-                is UiState.Loading -> {
-                    if (recentlyPlayedLoading) {
-                        recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
-                        // Recents owns the leading layout while its request is
-                        // pending, so the feed behind it starts with ordinary
-                        // shelf placeholders rather than another hero card.
-                        feedSkeleton(firstIsHero = false)
-                    } else {
-                        feedSkeleton(firstIsHero = leadHero)
-                    }
-                }
-                is UiState.Error -> item {
-                    MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
-                }
-                is UiState.Success -> {
-                    if (recentlyPlayedLoading) {
-                        recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
-                    }
-                    // The loading skeleton already owns the hero slot. Until
-                    // Recently Played lands, every real shelf must retain its
-                    // compact-card layout instead of briefly becoming a hero.
-                    itemsIndexedShelves(
-                        shelves = state.data,
-                        onItemClick = onItemClick,
-                        onItemLongPress = onItemLongPress,
-                        currentSong = currentSong,
-                        isPlaying = isPlaying,
-                        firstIsHero = leadHero && !recentlyPlayedLoading,
-                        recentsViewType = recentsViewType,
-                        onRecentsViewTypeToggle = {
-                            AppUi.host.setHomeRecentsViewType(
-                                if (recentsViewType == LibraryViewType.LIST) {
-                                    LibraryViewType.GRID
-                                } else {
-                                    LibraryViewType.LIST
-                                },
-                            )
-                        },
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Ambient Spotify top glow gradient
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(340.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF103E22).copy(alpha = 0.5f),
+                                Color(0xFF092012).copy(alpha = 0.2f),
+                                Color.Transparent,
+                            ),
+                            startY = 0f,
+                            endY = 800f,
+                        ),
+                    ),
+            )
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = if (title != null) {
+                    PaddingValues(
+                        top = (contentPadding.calculateTopPadding() - HOME_TITLE_LIFT).coerceAtLeast(0.dp),
+                        bottom = contentPadding.calculateBottomPadding(),
                     )
-                    if (loadingMore) feedMoreSkeleton()
+                } else {
+                    contentPadding
+                },
+            ) {
+                if (title != null) {
+                    item {
+                        SpotifyHomeHeader(
+                            greeting = getSpotifyGreeting(),
+                            selectedFilter = selectedFilter,
+                            onSelectFilter = { selectedFilter = it },
+                        )
+                    }
+                }
+                if (!signedIn && onSignIn != null) {
+                    item {
+                        SignInBanner(onSignIn = onSignIn, modifier = Modifier.padding(bottom = 8.dp))
+                    }
+                }
+                when (state) {
+                    is UiState.Loading -> {
+                        if (recentlyPlayedLoading) {
+                            recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
+                            feedSkeleton(firstIsHero = false)
+                        } else {
+                            feedSkeleton(firstIsHero = leadHero)
+                        }
+                    }
+                    is UiState.Error -> item {
+                        MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
+                    }
+                    is UiState.Success -> {
+                        if (recentlyPlayedLoading) {
+                            recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
+                        }
+                        itemsIndexedShelves(
+                            shelves = state.data,
+                            onItemClick = onItemClick,
+                            onItemLongPress = onItemLongPress,
+                            currentSong = currentSong,
+                            isPlaying = isPlaying,
+                            firstIsHero = leadHero && !recentlyPlayedLoading,
+                            recentsViewType = recentsViewType,
+                            onRecentsViewTypeToggle = {
+                                AppUi.host.setHomeRecentsViewType(
+                                    if (recentsViewType == LibraryViewType.LIST) {
+                                        LibraryViewType.GRID
+                                    } else {
+                                        LibraryViewType.LIST
+                                    },
+                                )
+                            },
+                            selectedFilter = selectedFilter,
+                        )
+                        if (loadingMore) feedMoreSkeleton()
+                    }
                 }
             }
         }
@@ -222,13 +246,6 @@ fun HomeScreen(
 
     if (onLoadMore != null && state is UiState.Success) {
         val loadMore by rememberUpdatedState(onLoadMore)
-        // Re-checked on every layout change, rather than on the rising edge of
-        // "the tail is in view". A page that appends only a shelf or two leaves
-        // the list still near its end, so an edge-triggered effect would never
-        // fire a second time: the feed dead-ended at the bottom with no
-        // skeleton and no request in flight to explain it. Restarting on
-        // [loadingMore] re-checks the moment a page settles, so the next one is
-        // asked for while the tail is still on screen to show it loading.
         LaunchedEffect(listState, loadingMore) {
             snapshotFlow {
                 val layout = listState.layoutInfo
@@ -241,8 +258,191 @@ fun HomeScreen(
 }
 
 /**
- * Recents mirrors the artist page's top-tracks pager. Any other lead shelf keeps
- * Apple's full-bleed treatment, while the remaining shelves use square cards.
+ * Spotify Home Header: Bold time-based greeting ("Good morning", "Good afternoon", "Good evening")
+ * along with Spotify capsule category pills ("All", "Music", "Podcasts", "Mixes").
+ */
+@Composable
+private fun SpotifyHomeHeader(
+    greeting: String,
+    selectedFilter: String,
+    onSelectFilter: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 6.dp),
+    ) {
+        // Greeting row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = greeting,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+
+        // Spotify Filter Chips
+        val filters = listOf("All", "Music", "Podcasts", "Mixes")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            filters.forEach { filterName ->
+                val isSelected = filterName == selectedFilter
+                val chipBg = if (isSelected) PineApplePurple else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                val chipTextColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(chipBg)
+                        .clickable { onSelectFilter(filterName) }
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = filterName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = chipTextColor,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Spotify Signature Quick-Access Grid: 2 columns of 56dp horizontal capsule cards.
+ * This is the signature, unmistakable element of Spotify's Home page.
+ */
+@Composable
+private fun SpotifyQuickAccessGrid(
+    items: List<ShelfItem>,
+    onItemClick: (ShelfItem) -> Unit,
+    onItemLongPress: ((ShelfItem) -> Unit)?,
+    currentSong: Song?,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val isCurrentItem = items.playingItemMatcher(currentSong)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = PAGE_GUTTER, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items.take(8).chunked(2).forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                rowItems.forEach { item ->
+                    SpotifyQuickCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = onItemLongPress?.let { { it(item) } },
+                        isCurrent = isCurrentItem(item),
+                        isPlaying = isCurrentItem(item) && isPlaying,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (rowItems.size == 1) {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SpotifyQuickCard(
+    item: ShelfItem,
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)?,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .height(56.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
+            .contextClick(onLongPress),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            AsyncImage(
+                model = item.thumbnailUrl.artworkAt(ROW_ART_PX),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (isCurrent && isPlaying) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SearchPlayingBars()
+                }
+            }
+        }
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (isCurrent) PineApplePurple else MaterialTheme.colorScheme.onBackground,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 10.dp),
+        )
+        if (isCurrent && isPlaying) {
+            Box(
+                modifier = Modifier
+                    .padding(end = 8.dp)
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(PineApplePurple),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.GraphicEq,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Organizes Home Shelves Spotify-style:
+ * 1. The top shelf powers the 2-Column Quick-Access Grid (up to 8 items).
+ * 2. Remaining shelves are rendered as Spotify horizontal carousels with Spotify card styling.
  */
 private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     shelves: List<HomeShelf>,
@@ -253,42 +453,152 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     firstIsHero: Boolean = true,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
+    selectedFilter: String = "All",
 ) {
-    shelves.forEachIndexed { index, shelf ->
-        item(key = shelf.title + index) {
-            val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            if (index == 0 && shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
-                RecentShelf(
-                    shelf = shelf,
-                    onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                    viewType = recentsViewType,
-                    onViewTypeToggle = onRecentsViewTypeToggle,
+    val filteredShelves = when (selectedFilter) {
+        "Music" -> shelves.filterNot {
+            it.title.contains("Shorts", ignoreCase = true) ||
+                it.title.contains("Podcast", ignoreCase = true)
+        }
+        "Podcasts" -> shelves.filter {
+            it.title.contains("Podcast", ignoreCase = true) ||
+                it.title.contains("Show", ignoreCase = true)
+        }
+        "Mixes" -> shelves.filter {
+            it.title.contains("Mix", ignoreCase = true) ||
+                it.title.contains("Radio", ignoreCase = true) ||
+                it.title.contains("Similar", ignoreCase = true) ||
+                it.title.contains("Quick", ignoreCase = true)
+        }
+        else -> shelves
+    }
+
+    if (filteredShelves.isEmpty() && selectedFilter == "Podcasts") {
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PAGE_GUTTER, vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "No podcasts yet",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
-            } else if (index == 0 && firstIsHero) {
-                HeroShelf(
-                    shelf = shelf,
-                    onItemClick = openItem,
-                    onItemLongPress = onItemLongPress,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Podcasts and shows you listen to will appear here",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                Shelf(
-                    shelf = shelf,
-                    onItemClick = openItem,
+            }
+        }
+        return
+    }
+
+    val firstShelf = filteredShelves.firstOrNull()
+    val hasQuickGrid = firstShelf != null && firstShelf.items.size >= 2 && recentsViewType == LibraryViewType.LIST
+
+    if (hasQuickGrid && firstShelf != null) {
+        val quickItems = firstShelf.items.take(8)
+        val remainingFirstShelfItems = firstShelf.items.drop(8)
+
+        // 1. Spotify 2-Column Quick-Access Grid
+        item(key = "spotify_quick_grid") {
+            SpotifyQuickAccessGrid(
+                items = quickItems,
+                onItemClick = { item -> onItemClick(item, firstShelf.title) },
+                onItemLongPress = onItemLongPress,
+                currentSong = currentSong,
+                isPlaying = isPlaying,
+            )
+        }
+
+        // If the first shelf had more than 8 items, display remaining in a carousel
+        if (remainingFirstShelfItems.isNotEmpty()) {
+            item(key = "first_shelf_remaining") {
+                SpotifyShelf(
+                    shelf = firstShelf.copy(
+                        title = firstShelf.title.ifBlank { "Jump back in" },
+                        items = remainingFirstShelfItems,
+                    ),
+                    onItemClick = { item -> onItemClick(item, firstShelf.title) },
                     onItemLongPress = onItemLongPress,
                     currentSong = currentSong,
                     isPlaying = isPlaying,
                 )
             }
         }
+
+        // 2. All subsequent shelves as Spotify horizontal carousels
+        filteredShelves.drop(1).forEachIndexed { idx, shelf ->
+            item(key = shelf.title + (idx + 1)) {
+                SpotifyShelf(
+                    shelf = shelf,
+                    onItemClick = { item -> onItemClick(item, shelf.title) },
+                    onItemLongPress = onItemLongPress,
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                )
+            }
+        }
+    } else {
+        // Fallback or grid view: display all shelves as Spotify carousels
+        filteredShelves.forEachIndexed { idx, shelf ->
+            item(key = shelf.title + idx) {
+                if (idx == 0 && firstIsHero) {
+                    HeroShelf(
+                        shelf = shelf,
+                        onItemClick = { item -> onItemClick(item, shelf.title) },
+                        onItemLongPress = onItemLongPress,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                    )
+                } else {
+                    SpotifyShelf(
+                        shelf = shelf,
+                        onItemClick = { item -> onItemClick(item, shelf.title) },
+                        onItemLongPress = onItemLongPress,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                    )
+                }
+            }
+        }
     }
 }
 
-/** The same four-rows-per-page treatment used by an artist's Top songs. */
+/** Spotify Horizontal Carousel Shelf. */
+@Composable
+private fun SpotifyShelf(
+    shelf: HomeShelf,
+    onItemClick: (ShelfItem) -> Unit,
+    onItemLongPress: ((ShelfItem) -> Unit)?,
+    currentSong: Song? = null,
+    isPlaying: Boolean = false,
+) {
+    Column(Modifier.padding(bottom = 26.dp)) {
+        SectionHeader(shelf.title, shelf.subtitle)
+        val isCurrentItem = shelf.items.playingItemMatcher(currentSong)
+        ShelfRow(
+            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(shelf.items) { item ->
+                ShelfCard(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    onLongPress = onItemLongPress?.let { { it(item) } },
+                    isCurrent = isCurrentItem(item),
+                    isPlaying = isCurrentItem(item) && isPlaying,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun RecentShelf(
     shelf: HomeShelf,
@@ -308,27 +618,13 @@ private fun RecentShelf(
         )
         val isCurrentItem = shelf.items.playingItemMatcher(currentSong)
         if (viewType == LibraryViewType.LIST) {
-            BoxWithConstraints {
-                val columnWidth = trackColumnWidth(maxWidth)
-                ShelfRow(
-                    contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(shelf.items.chunked(RECENT_TRACKS_PER_COLUMN)) { column ->
-                        Column(Modifier.width(columnWidth)) {
-                            column.forEach { item ->
-                                RecentTrackRow(
-                                    item = item,
-                                    onClick = { onItemClick(item) },
-                                    onLongPress = onItemLongPress?.let { { it(item) } },
-                                    isCurrent = isCurrentItem(item),
-                                    isPlaying = isCurrentItem(item) && isPlaying,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            SpotifyQuickAccessGrid(
+                items = shelf.items,
+                onItemClick = onItemClick,
+                onItemLongPress = onItemLongPress,
+                currentSong = currentSong,
+                isPlaying = isPlaying,
+            )
         } else {
             BoxWithConstraints {
                 val cardWidth = heroCardWidth(maxWidth)
@@ -368,7 +664,8 @@ private fun RecentSectionHeader(
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -376,7 +673,7 @@ private fun RecentSectionHeader(
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -431,8 +728,7 @@ private fun RecentTrackRow(
 }
 
 /**
- * One row of Recents' four-to-a-column pager. Public so the desktop artist page
- * can list its top songs the same way.
+ * Compact entity row for lists and search items.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -460,8 +756,8 @@ fun CompactTrackRow(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .thumbnailBorder(RoundedCornerShape(7.dp))
+                    .clip(RoundedCornerShape(6.dp))
+                    .thumbnailBorder(RoundedCornerShape(6.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
             if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
@@ -471,7 +767,8 @@ fun CompactTrackRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (isCurrent) PlayingAccent else MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isCurrent) PineApplePurple else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -489,63 +786,24 @@ fun CompactTrackRow(
     }
 }
 
-/**
- * Listen now's large heading, with the wordmark stacked above it.
- *
- * Only the home tab carries it — the top bar no longer shows the logo, so this
- * is where the app's mark lives. Its height is taken from the heading's own
- * font size rather than a fixed dp, so the two keep their proportion under the
- * system font scale.
- */
 @Composable
-private fun HomeTitle(title: String, modifier: Modifier = Modifier) {
-    val style = MaterialTheme.typography.displayLarge
-    val logoHeight = 36.dp
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Image(
-                painter = painterResource(Res.drawable.ic_logo),
-                contentDescription = "PineApple Music",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .height(logoHeight)
-                    .aspectRatio(512f / 341f),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "Music",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-        Text(
-            text = title,
-            style = style,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-    }
+private fun HomeTitle(
+    title: String,
+    selectedFilter: String = "All",
+    onSelectFilter: (String) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val greeting = remember { getSpotifyGreeting() }
+    SpotifyHomeHeader(
+        greeting = greeting,
+        selectedFilter = selectedFilter,
+        onSelectFilter = onSelectFilter,
+        modifier = modifier,
+    )
 }
 
-/** The wordmark's height against the heading's font size. */
-private const val LOGO_TO_FONT = 0.9f
-
 /**
- * Shared by the home feed, Explore and Library so headings line up across tabs.
- *
- * [onShowAll] is only ever set on Library, whose rows stop at five cards
- * rather than running the shelf's whole length — see [LibraryGridShelf].
- * Home and Explore never pass it, so their heading is unchanged.
+ * Shared by the home feed, Explore and Library.
  */
 @Composable
 internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() -> Unit)? = null) {
@@ -560,15 +818,16 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
         Column(Modifier.weight(1f)) {
             Text(
                 text = displayTitle,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (displaySubtitle.isNotBlank()) {
                 Text(
                     text = displaySubtitle,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -579,7 +838,8 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
             Text(
                 text = stringResource(Res.string.show_all),
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+                color = PineApplePurple,
                 modifier = Modifier
                     .clickable(onClick = onShowAll)
                     .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
@@ -587,6 +847,7 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
         }
     }
 }
+
 @Composable
 internal fun localizeShelfTitle(title: String): String {
     val trimmed = title.trim()
@@ -694,6 +955,7 @@ internal fun localizeShelfTitle(title: String): String {
         else -> title
     }
 }
+
 @Composable
 internal fun localizeShelfSubtitle(subtitle: String): String {
     val trimmed = subtitle.trim()
@@ -768,10 +1030,6 @@ private fun HeroShelf(
     Column(Modifier.padding(bottom = 26.dp)) {
         SectionHeader(shelf.title, shelf.subtitle)
         val isCurrentItem = shelf.items.playingItemMatcher(currentSong)
-        // Measured rather than taken as a share of the parent, because the card
-        // has a ceiling as well as a fraction — see [heroCardWidth]. A fixed
-        // width is also the only one of the two the aspect ratio below can turn
-        // into a height, so the card keeps its shape however it was arrived at.
         BoxWithConstraints {
             val cardWidth = heroCardWidth(maxWidth)
             ShelfRow(
@@ -794,7 +1052,7 @@ private fun HeroShelf(
     }
 }
 
-/** Big card: artwork with the caption laid over a scrim, as on Listen Now. */
+/** Featured card styled with Spotify's modern gradient and round green play badge. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HeroCard(
@@ -808,8 +1066,8 @@ private fun HeroCard(
     Box(
         modifier = modifier
             .aspectRatio(HERO_CARD_RATIO)
-            .clip(RoundedCornerShape(18.dp))
-            .thumbnailBorder(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .thumbnailBorder(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
             .contextClick(onLongPress),
@@ -820,47 +1078,67 @@ private fun HeroCard(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-        if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomStart)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f)),
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)),
                     ),
                 )
-                .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 14.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 14.dp),
         ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleLarge,
-                color = if (isCurrent) PlayingAccent else Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (item.subtitle.isNotBlank()) {
-                val displaySubtitle = localizeCardSubtitle(item.subtitle)
-                Text(
-                    text = displaySubtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.72f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isCurrent) PineApplePurple else Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (item.subtitle.isNotBlank()) {
+                        val displaySubtitle = localizeCardSubtitle(item.subtitle)
+                        Text(
+                            text = displaySubtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.75f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                // Circular PineApple Purple play button
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(PineApplePurple),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isCurrent && isPlaying) {
+                        SearchPlayingBars(Modifier.size(16.dp))
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/**
- * [leadingCard] rides at the head of the row, ahead of the content — the
- * Library tab's "New playlist" tile, which belongs among the playlists rather
- * than in a bar somewhere above them. [onItemLongPress] opens the album /
- * playlist menu, and is null only where a card points at something with no
- * track list behind it to act on.
- */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun Shelf(
     shelf: HomeShelf,
@@ -891,11 +1169,6 @@ internal fun Shelf(
     }
 }
 
-/**
- * A card that isn't a thing yet — the dashed "New playlist" tile at the head
- * of the Library's playlist row, sized to sit in line with the covers beside
- * it rather than as a button bolted above them.
- */
 @Composable
 internal fun NewShelfCard(
     icon: ImageVector,
@@ -903,7 +1176,6 @@ internal fun NewShelfCard(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier.width(SHELF_CARD_WIDTH),
-    /** A full-colour mark drawn in place of [icon], for a card that stands for a brand. */
     logo: DrawableResource? = null,
 ) {
     Column(
@@ -913,13 +1185,11 @@ internal fun NewShelfCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
             if (logo != null) {
-                // The mark is a disc with the bars cut out, so tinting it
-                // leaves the bars clear: white on dark, black on light.
                 Icon(
                     painter = painterResource(logo),
                     contentDescription = null,
@@ -930,7 +1200,7 @@ internal fun NewShelfCard(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = PineApplePurple,
                     modifier = Modifier.size(34.dp),
                 )
             }
@@ -939,6 +1209,7 @@ internal fun NewShelfCard(
         Text(
             text = label,
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -953,11 +1224,6 @@ internal fun NewShelfCard(
     }
 }
 
-/**
- * A device-folder card: mesh gradient in the folder's colours with its glyph
- * on top. One composable for local music, WebDAV and SMB rather than three
- * copies of the same box.
- */
 @Composable
 private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector) {
     val palette = remember { MeshPalette(colors) }
@@ -965,7 +1231,7 @@ private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(12.dp)),
+            .clip(RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
         MeshGradientBackground(
@@ -983,6 +1249,12 @@ private fun ServiceCard(colors: List<Color>, trackKey: String, icon: ImageVector
     }
 }
 
+/**
+ * Spotify-styled ShelfCard:
+ * - Artists are rendered in a full circle (CircleShape), with centered text.
+ * - Albums, Playlists, Tracks are rendered with 8dp rounded corners and a floating Spotify Green play button!
+ * - When actively playing: Title highlights in Spotify Green with animated soundwave indicator.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ShelfCard(
@@ -990,15 +1262,22 @@ internal fun ShelfCard(
     onClick: () -> Unit,
     onLongPress: (() -> Unit)? = null,
     modifier: Modifier = Modifier.width(SHELF_CARD_WIDTH),
-    /** Set on a Library playlist card that's in [AppSettings.pinnedPlaylists][com.music.nikamp.data.settings.AppSettings.pinnedPlaylists]. */
     isPinned: Boolean = false,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
 ) {
+    val isArtist = item.subtitle.contains("Artist", ignoreCase = true) ||
+        item.subtitle.contains("Nghệ sĩ", ignoreCase = true) ||
+        item.subtitle.contains("アーティスト", ignoreCase = true) ||
+        item.browseId?.startsWith("UC") == true
+
+    val coverShape = if (isArtist) CircleShape else RoundedCornerShape(8.dp)
+
     Column(
         modifier = modifier
             .longPressMenuClickable(onClick = onClick, onLongClick = onLongPress)
             .contextClick(onLongPress),
+        horizontalAlignment = if (isArtist) Alignment.CenterHorizontally else Alignment.Start,
     ) {
         when (item.browseId) {
             "local:downloads" -> {
@@ -1007,7 +1286,7 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     MeshGradientBackground(
@@ -1049,17 +1328,48 @@ internal fun ShelfCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .thumbnailBorder(RoundedCornerShape(12.dp))
+                        .clip(coverShape)
+                        .thumbnailBorder(coverShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
                     AsyncImage(
                         model = item.thumbnailUrl.artworkAt(CARD_ART_PX),
                         contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    if (isCurrent && isPlaying) SearchPlayingBars(Modifier.align(Alignment.Center))
+                    // Floating PineApple Purple play button badge
+                    if (!isArtist) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(PineApplePurple),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (isCurrent && isPlaying) {
+                                SearchPlayingBars(Modifier.size(14.dp))
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.PlayArrow,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    } else if (isCurrent && isPlaying) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.35f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            SearchPlayingBars(Modifier.size(24.dp))
+                        }
+                    }
                 }
             }
         }
@@ -1067,6 +1377,7 @@ internal fun ShelfCard(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (isArtist) Arrangement.Center else Arrangement.Start,
         ) {
             if (isPinned) {
                 Icon(
@@ -1080,19 +1391,23 @@ internal fun ShelfCard(
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (isCurrent) PlayingAccent else MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Bold,
+                color = if (isCurrent) PineApplePurple else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
+                textAlign = if (isArtist) TextAlign.Center else TextAlign.Start,
+                modifier = if (isArtist) Modifier.fillMaxWidth() else Modifier.weight(1f, fill = false),
             )
         }
         val displaySubtitle = localizeCardSubtitle(item.subtitle)
         Text(
             text = displaySubtitle,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            textAlign = if (isArtist) TextAlign.Center else TextAlign.Start,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

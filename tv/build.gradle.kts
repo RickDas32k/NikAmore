@@ -449,6 +449,7 @@ dependencies {
     // ours are `nikamp://` addresses that only the service's resolver can
     // turn into a real stream — see [com.music.nikamp.playback.cast.CastPlayback].
     implementation("com.google.android.gms:play-services-cast-framework:22.2.0")
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
     implementation("androidx.mediarouter:mediarouter:1.8.1")
 
     testImplementation("junit:junit:4.13.2")

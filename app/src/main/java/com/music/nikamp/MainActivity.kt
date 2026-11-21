@@ -1,5 +1,10 @@
 package com.music.nikamp
 
+import android.accounts.AccountManager
+import android.app.Activity
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -556,6 +561,7 @@ private fun NikAmpApp(
      * signing in, or picking a channel in YouTube Music's own Accounts list.
      */
     var webSession by remember { mutableStateOf<WebSessionMode?>(null) }
+    var signInLoginHint by remember { mutableStateOf<String?>(null) }
     // Replay: the page (a route on the back stack — see [AppNavigator]), the
     // stories over it, and the share sheet over those. Closing one has to
     // reveal what it was opened from.
@@ -1988,6 +1994,50 @@ private fun NikAmpApp(
             Toast.makeText(context, context.getString(R.string.storage_required_read), Toast.LENGTH_SHORT).show()
         }
     }
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestProfile()
+            .build()
+    }
+    val googleSignInClient = remember { GoogleSignIn.getClient(context, gso) }
+
+    val googleAccountChooserLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            var email = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            val gsAccount = runCatching { task.getResult(ApiException::class.java) }.getOrNull()
+            if (gsAccount != null && email.isNullOrBlank()) {
+                email = gsAccount.email
+            }
+            signInLoginHint = email?.takeIf { it.isNotBlank() }
+            webSession = WebSessionMode.SIGN_IN
+        }
+    }
+
+    val launchGoogleSignIn: () -> Unit = {
+        try {
+            val intent = AccountManager.newChooseAccountIntent(
+                null,
+                null,
+                arrayOf("com.google"),
+                null,
+                null,
+                null,
+                null,
+            )
+            googleAccountChooserLauncher.launch(intent)
+        } catch (_: Exception) {
+            try {
+                googleAccountChooserLauncher.launch(googleSignInClient.signInIntent)
+            } catch (_: Exception) {
+                signInLoginHint = null
+                webSession = WebSessionMode.SIGN_IN
+            }
+        }
+    }
     val mediaPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -2765,13 +2815,16 @@ private fun NikAmpApp(
                                 channelName = selectedChannelName,
                                 onSignIn = {
                                     navigator.clear()
-                                    webSession = WebSessionMode.SIGN_IN
+                                    launchGoogleSignIn()
                                 },
                                 onSwitchChannel = {
                                     viewModel.loadChannels()
                                     showAccountSelector = true
                                 },
-                                onSignOut = { viewModel.signOut() },
+                                onSignOut = {
+                                    runCatching { googleSignInClient.signOut() }
+                                    viewModel.signOut()
+                                },
                                 onOpenListenBrainzLogin = { showListenBrainzLogin = true },
                                 onOpenLastfmLogin = { showLastfmLogin = true },
                                 onOpenDiscord = { navigator.push(AppRoute.Discord) },
@@ -2799,7 +2852,7 @@ private fun NikAmpApp(
                                 },
                                 onSignIn = {
                                     navigator.clear()
-                                    webSession = WebSessionMode.SIGN_IN
+                                    launchGoogleSignIn()
                                 },
                                 contentPadding = listPadding,
                                 onEditServer = { editingPartyServer = true },
@@ -2813,9 +2866,12 @@ private fun NikAmpApp(
                                 account = account,
                                 onSignIn = {
                                     navigator.clear()
-                                    webSession = WebSessionMode.SIGN_IN
+                                    launchGoogleSignIn()
                                 },
-                                onSignOut = { viewModel.signOut() },
+                                onSignOut = {
+                                    runCatching { googleSignInClient.signOut() }
+                                    viewModel.signOut()
+                                },
                                 onAccountScrobbling = { navigator.push(AppRoute.AccountScrobbling) },
                                 onEqualizer = { navigator.push(AppRoute.Equalizer) },
                                 onOpenReplay = {
@@ -3058,7 +3114,7 @@ private fun NikAmpApp(
                                 isPlaying = player.isPlaying,
                                 title = stringResource(R.string.listen_now),
                                 signedIn = signedIn,
-                                onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                                onSignIn = launchGoogleSignIn,
                                 onItemClick = { item, shelfTitle ->
                                     val song = shelfSong(item)
                                     // Hoisted because ShelfItem lives in :shared, and
@@ -3330,7 +3386,7 @@ private fun NikAmpApp(
                                         },
                                     )
                                 },
-                                onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                                onSignIn = launchGoogleSignIn,
                                 onRetry = viewModel::loadLibrary,
                                 refreshing = MainViewModel.Feed.LIBRARY in refreshing,
                                 onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
@@ -4749,14 +4805,17 @@ private fun NikAmpApp(
                     ListenTogether.nickname().ifBlank { account?.name.orEmpty() }
                 },
                 onNameChosen = ListenTogether::setNickname,
-                onSignIn = { webSession = WebSessionMode.SIGN_IN },
+                onSignIn = launchGoogleSignIn,
                 onFinish = AppSettings::setOnboardingComplete,
             )
         }
 
         // ---- Google sign-in (full screen WebView) ----
         webSession?.let { mode ->
-            BackHandler { webSession = null }
+            BackHandler {
+                webSession = null
+                signInLoginHint = null
+            }
             // Raised by "Use this channel", read by the browser as "take the
             // session from the page as it now stands". A counter rather than a
             // flag so a second tap, after a failed first one, is still a new
@@ -4774,7 +4833,10 @@ private fun NikAmpApp(
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        IconButton(onClick = { webSession = null }) {
+                        IconButton(onClick = {
+                            webSession = null
+                            signInLoginHint = null
+                        }) {
                             Icon(
                                 Icons.Rounded.Close,
                                 contentDescription = stringResource(R.string.close),
@@ -4790,7 +4852,13 @@ private fun NikAmpApp(
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onBackground,
                             )
-                            if (pageReady) {
+                            if (confirmingProfile) {
+                                Text(
+                                    text = "Connecting your YouTube Music account...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            } else if (pageReady) {
                                 Text(
                                     text = if (captureFailed) {
                                          stringResource(R.string.profile_unavailable)
@@ -4803,7 +4871,13 @@ private fun NikAmpApp(
                                 )
                             }
                         }
-                        if (pageReady) {
+                        if (confirmingProfile) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp).padding(end = 8.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else if (pageReady) {
                             TextButton(onClick = {
                                 captureFailed = false
                                 confirmingProfile = true
@@ -4821,6 +4895,7 @@ private fun NikAmpApp(
                         initialCookie = if (mode == WebSessionMode.SWITCH_CHANNEL) {
                             googleAccounts.firstOrNull { it.accountId == activeAccountId }?.cookie
                         } else null,
+                        loginHint = if (mode == WebSessionMode.SIGN_IN) signInLoginHint else null,
                         captureRequest = captureRequest,
                         onPageReady = { pageReady = it },
                         onCaptureUnavailable = {
@@ -4828,10 +4903,13 @@ private fun NikAmpApp(
                             captureFailed = true
                         },
                         onCaptured = { session ->
+                            confirmingProfile = true
                             viewModel.onWebSession(session, mode) { accepted ->
                                 confirmingProfile = false
                                 if (accepted) {
                                     webSession = null
+                                    signInLoginHint = null
+                                    Toast.makeText(context, "Connected YouTube Music account!", Toast.LENGTH_SHORT).show()
                                     if (mode == WebSessionMode.SIGN_IN) {
                                         navigator.clear()
                                         selectedTab = TAB_LIBRARY
@@ -4950,7 +5028,7 @@ private fun NikAmpApp(
                 onSelect = { selected, profile -> viewModel.selectProfile(selected.accountId, profile.profileId) },
                 onAddAccount = {
                     showAccountSelector = false
-                    webSession = WebSessionMode.SIGN_IN
+                    launchGoogleSignIn()
                 },
                 onRemoveAccount = { selected ->
                     viewModel.removeAccount(selected.accountId)
@@ -5588,3 +5666,28 @@ private const val TAB_HOME = 0
 private const val TAB_EXPLORE = 1
 private const val TAB_LIBRARY = 2
 private const val TAB_SEARCH = 3
+
+private fun getDisplayNameFromEmail(context: Context, email: String): String {
+    try {
+        val cursor = context.contentResolver.query(
+            android.provider.ContactsContract.Profile.CONTENT_URI,
+            arrayOf(android.provider.ContactsContract.Profile.DISPLAY_NAME),
+            null, null, null,
+        )
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val name = it.getString(0)
+                if (!name.isNullOrBlank()) return name
+            }
+        }
+    } catch (_: Exception) {}
+
+    val localPart = email.substringBefore('@')
+    return localPart
+        .split('.', '_', '-')
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { part ->
+            part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+        .ifBlank { email }
+}

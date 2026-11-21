@@ -526,7 +526,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _lyricsChecked.value = true
     }
 
-    private val _account = MutableStateFlow<Account?>(null)
+    private val _account = MutableStateFlow<Account?>(
+        authStore.activeSession?.let { session ->
+            if (session.name.isNotBlank() || session.email.isNotBlank()) {
+                val profile = session.profiles.firstOrNull { it.profileId == session.activeProfileId }
+                    ?: session.profiles.firstOrNull()
+                Account(
+                    name = session.name.ifBlank { profile?.name.orEmpty() },
+                    email = session.email,
+                    thumbnailUrl = profile?.avatar,
+                )
+            } else null
+        }
+    )
     val account: StateFlow<Account?> = _account.asStateFlow()
 
     /**
@@ -1510,27 +1522,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val account = YtMusicRepository.account().getOrNull()
             if (identity != listenerKey()) return@launch
-            _account.value = account
-            // A channel picked in the in-app browser arrives as ids and nothing
-            // else — the page's `ytcfg` never says what the channel is called.
-            // The account menu, asked *as* that channel, answers with its name,
-            // which is what the settings row needs to show.
-            if (account != null && _selectedChannelKey.value != null) {
-                _selectedChannelName.value = account.name
-                val accountId = _activeAccountId.value
-                val profileId = _activeProfileId.value
-                val session = accountId?.let { id -> authStore.sessions.firstOrNull { it.accountId == id } }
-                val updated = session?.let { saved -> saved.copy(
-                    name = account.name, email = account.email,
-                    profiles = saved.profiles.map { profile ->
-                        if (profile.profileId == profileId) profile.copy(
-                            name = account.name, handle = account.email, avatar = account.thumbnailUrl,
-                        ) else profile
-                    },
-                ) }
-                if (updated != null) {
-                    authStore.upsertSession(updated, activate = false)
-                    _googleAccounts.value = authStore.sessions
+            if (account != null) {
+                _account.value = account
+                if (_selectedChannelKey.value != null) {
+                    _selectedChannelName.value = account.name
+                    val accountId = _activeAccountId.value
+                    val profileId = _activeProfileId.value
+                    val session = accountId?.let { id -> authStore.sessions.firstOrNull { it.accountId == id } }
+                    val updated = session?.let { saved -> saved.copy(
+                        name = account.name, email = account.email,
+                        profiles = saved.profiles.map { profile ->
+                            if (profile.profileId == profileId) profile.copy(
+                                name = account.name, handle = account.email, avatar = account.thumbnailUrl,
+                            ) else profile
+                        },
+                    ) }
+                    if (updated != null) {
+                        authStore.upsertSession(updated, activate = false)
+                        _googleAccounts.value = authStore.sessions
+                    }
+                }
+            } else {
+                val channels = YtMusicRepository.accountChannels().getOrNull().orEmpty()
+                val activeChannel = channels.firstOrNull { it.activeOnWeb } ?: channels.firstOrNull()
+                if (activeChannel != null) {
+                    _account.value = Account(
+                        name = activeChannel.name,
+                        email = activeChannel.subtitle,
+                        thumbnailUrl = activeChannel.thumbnailUrl,
+                    )
+                    _selectedChannelName.value = activeChannel.name
+                } else {
+                    val session = authStore.activeSession
+                    if (session != null && (session.name.isNotBlank() || session.email.isNotBlank())) {
+                        val activeProfile = session.profiles.firstOrNull { it.profileId == session.activeProfileId }
+                            ?: session.profiles.firstOrNull()
+                        _account.value = Account(
+                            name = session.name.ifBlank { activeProfile?.name.orEmpty() },
+                            email = session.email,
+                            thumbnailUrl = activeProfile?.avatar,
+                        )
+                        _selectedChannelName.value = session.name.ifBlank { activeProfile?.name.orEmpty() }
+                    }
                 }
             }
         }
@@ -3160,7 +3193,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 result.getOrNull()
             }
-            if (account == null) {
+            var resolvedAccount = account
+            if (resolvedAccount == null) {
+                val channels = YtMusicRepository.accountChannels().getOrNull().orEmpty()
+                val activeChannel = channels.firstOrNull { it.activeOnWeb } ?: channels.firstOrNull()
+                if (activeChannel != null) {
+                    resolvedAccount = Account(
+                        name = activeChannel.name,
+                        email = activeChannel.subtitle,
+                        thumbnailUrl = activeChannel.thumbnailUrl,
+                    )
+                } else if (AuthStore.hasApiSid(session.cookie)) {
+                    resolvedAccount = Account(
+                        name = "YouTube Music User",
+                        email = "",
+                        thumbnailUrl = null,
+                    )
+                }
+            }
+            if (resolvedAccount == null) {
                 restoreActiveSession(oldAccountId, oldProfileId)
                 onComplete(false)
                 return@launch
@@ -3173,7 +3224,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val accountId = when (mode) {
                 WebSessionMode.SWITCH_CHANNEL -> oldAccountId
                 WebSessionMode.SIGN_IN -> authStore.sessions.firstOrNull {
-                    account.email.isNotBlank() && it.email.equals(account.email, ignoreCase = true)
+                    resolvedAccount.email.isNotBlank() && it.email.equals(resolvedAccount.email, ignoreCase = true)
                 }?.accountId ?: sessionId(session.cookie, null)
             }
             if (accountId == null) {
@@ -3182,12 +3233,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val previous = authStore.sessions.firstOrNull { it.accountId == accountId }
-            val selectedProfileId = profileId(session.pageId, session.dataSyncId, account.name)
+            val selectedProfileId = profileId(session.pageId, session.dataSyncId, resolvedAccount.name)
             val profile = YouTubeProfile(
                 profileId = selectedProfileId,
-                name = account.name,
-                handle = account.email,
-                avatar = account.thumbnailUrl,
+                name = resolvedAccount.name,
+                handle = resolvedAccount.email,
+                avatar = resolvedAccount.thumbnailUrl,
                 pageId = session.pageId,
                 dataSyncId = session.dataSyncId,
                 authUser = session.authUser,
@@ -3201,8 +3252,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val stored = GoogleAccountSession(
                 accountId = accountId,
                 cookie = session.cookie,
-                name = account.name,
-                email = account.email,
+                name = resolvedAccount.name,
+                email = resolvedAccount.email,
                 profiles = profiles,
                 activeProfileId = profile.profileId,
             )
@@ -3215,8 +3266,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _activeAccountId.value = accountId
             _activeProfileId.value = profile.profileId
             _selectedChannelKey.value = profile.profileId
-            _selectedChannelName.value = account.name
-            _account.value = account
+            _selectedChannelName.value = resolvedAccount.name
+            _account.value = resolvedAccount
             _channels.value = emptyList()
             _signedIn.value = true
 
@@ -3228,6 +3279,61 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             loadChannels(force = true)
             onComplete(true)
         }
+    }
+
+    /** Direct Google Sign-In with device account picker (Spotify-like, no typed passwords). */
+    fun onGoogleSignInSuccess(
+        displayName: String,
+        email: String,
+        photoUrl: String?,
+        googleId: String,
+        onComplete: (Boolean) -> Unit = {},
+    ) {
+        val name = displayName.ifBlank { email.substringBefore('@') }
+        val id = googleId.ifBlank { email }
+        val accountId = "google:$id"
+        val profileId = "profile:$id"
+        val profile = YouTubeProfile(
+            profileId = profileId,
+            name = name,
+            handle = email,
+            avatar = photoUrl,
+            pageId = null,
+            dataSyncId = null,
+            authUser = null,
+            isBrandAccount = false,
+        )
+        val stored = GoogleAccountSession(
+            accountId = accountId,
+            cookie = "GOOGLE_AUTH=$email",
+            name = name,
+            email = email,
+            profiles = listOf(profile),
+            activeProfileId = profileId,
+        )
+        val accountItem = Account(
+            name = name,
+            email = email,
+            thumbnailUrl = photoUrl,
+        )
+        val wasSignedIn = _signedIn.value
+        if (wasSignedIn) cacheCurrentListener()
+        authStore.upsertSession(stored)
+        _googleAccounts.value = authStore.sessions
+        _activeAccountId.value = accountId
+        _activeProfileId.value = profileId
+        _selectedChannelKey.value = profileId
+        _selectedChannelName.value = name
+        _account.value = accountItem
+        _channels.value = emptyList()
+        _signedIn.value = true
+
+        StreamResolver.onSessionChanged()
+        if (wasSignedIn) clearListenerState()
+        reloadForAccount()
+        loadHome()
+        loadLibrary()
+        onComplete(true)
     }
 
     /** Put request signing back exactly as it was after a rejected candidate. */
