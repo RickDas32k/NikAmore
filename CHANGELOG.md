@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.4] - 2026-11-21
+
+### Fixed
+- **In-App Package Installer Disappearing Bug**: Replaced deprecated `ACTION_INSTALL_PACKAGE` intent and conflicting flags (`EXTRA_RETURN_RESULT` and `EXTRA_NOT_UNKNOWN_SOURCE`) with standard `Intent.ACTION_VIEW` and clean FileProvider URI read grants. This prevents Android PackageInstaller from silently closing without installing.
+- **Update Dialog Dismissal**: Automatically dismisses the in-app update prompt sheet once the user taps "Install Now" to prevent prompt re-triggering while the package installer executes.
+
+### Changed
+- **Version Bump**: Incremented `nikampVersionCode` to `33` and `nikampVersionName` to `1.0.4`.
+
+---
+
 ## [1.0.3] - 2026-11-21
 
 ### Added

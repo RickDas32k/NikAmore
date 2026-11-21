@@ -4948,7 +4948,10 @@ private fun NikAmpApp(
                     },
                     onInstall = {
                         val ready = AppUpdateChecker.download.value as? AppUpdateChecker.DownloadState.Ready
-                        ready?.let { AppUpdateChecker.installApk(context, it.file) }
+                        ready?.let {
+                            AppUpdateChecker.installApk(context, it.file)
+                            showUpdateDialog = false
+                        }
                     },
                     onOpenReleasePage = {
                         AppUpdateChecker.resetDownload()
